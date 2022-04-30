@@ -2,9 +2,9 @@
 Plugin module loader
 """
 
-import imp # pylint: disable=deprecated-module
-import os
+import imp  # pylint: disable=deprecated-module
 import logging
+import os
 
 from AppConfig import AppConfig
 
@@ -14,7 +14,7 @@ class PluginLoader:
     Plugin Loader to load configured plugins from the plugins folder
     """
 
-    __MAIN_MODULE ='__init__' # The main module name to look for in the plugin folder
+    __MAIN_MODULE = '__init__'  # The main module name to look for in the plugin folder
 
     def __init__(self, config: AppConfig, allowed_plugins, plugins_folder: str):
         self.__logger = logging.getLogger('pluginloader')
@@ -42,13 +42,12 @@ class PluginLoader:
                 info = imp.find_module(PluginLoader.__MAIN_MODULE, [location])
                 plugin_module = imp.load_module(PluginLoader.__MAIN_MODULE, *info)
                 self.__logger.info("Plugin: %s loaded", section_name)
-                if plugin_module.Plugin(self.__config).plugin_type=="output":
+                if plugin_module.Plugin(self.__config).plugin_type == "output":
                     self.outputs.append({"name": plugin, "info": info})
                 else:
                     self.inputs.append({"name": plugin, "info": info})
             else:
                 self.__logger.debug("%s disabled - not in allowed list", plugin)
-
 
     def load(self, plugin: str):
         """

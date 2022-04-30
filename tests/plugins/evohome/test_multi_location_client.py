@@ -1,16 +1,18 @@
 import pytest
+
 from AppConfig import AppConfig
-from test_base import TestBase
 from plugins.evohome import EvohomeMultiLocationClient
+from test_base import TestBase
+
 
 class TestEvoHomeMultiLocationClient(TestBase):
-
     installation_file_name = 'two_installations.json'
     ini_file_name = 'single_installation.ini'
 
     def setup_class(self):
         super().setup_class(self)
-        self.target = EvohomeMultiLocationClient(AppConfig(self.ini_file_name), 'Test-EvoHome', 'testUser', 'testPassword', False)
+        self.target = EvohomeMultiLocationClient(AppConfig(self.ini_file_name), 'Test-EvoHome', 'testUser',
+                                                 'testPassword', False)
 
     @pytest.mark.unit
     def test_get_location_returns_the_first_location_if_no_location_is_specified(self):

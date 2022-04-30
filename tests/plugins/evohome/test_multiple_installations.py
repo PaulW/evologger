@@ -1,10 +1,11 @@
 import pytest
+
 from AppConfig import AppConfig
-from test_base import TestBase, mock_data_file
 from plugins.evohome import Plugin
+from test_base import TestBase, mock_data_file
+
 
 class TestMultipleInstallations(TestBase):
-
     installation_file_name = 'two_installations.json'
     ini_file_name = 'two_installations.ini'
 

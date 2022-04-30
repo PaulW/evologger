@@ -1,10 +1,11 @@
 import pytest
+
 from AppConfig import AppConfig
-from test_base import TestBase, mock_data_file
 from plugins.evohome import Plugin
+from test_base import TestBase, mock_data_file
+
 
 class TestSingleInstallation(TestBase):
-
     installation_file_name = 'single_installation.json'
     ini_file_name = 'single_installation.ini'
 

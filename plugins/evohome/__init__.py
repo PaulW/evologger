@@ -3,19 +3,20 @@ Evohome input plugin - for getting all your zone and DHW temperatures
 """
 # pylint: disable=too-many-arguments,protected-access
 
-from datetime import datetime
-import json
-import http # Need this for disabling http debugging if necessary
+import http  # Need this for disabling http debugging if necessary
 import io
+import json
 import logging
 import random
+from datetime import datetime
 from tempfile import gettempdir
+
 import requests
 from evohomeclient2 import EvohomeClient
 
 from AppConfig import AppConfig
+from Metric import *
 from plugins.PluginBase import InputPluginBase, _get_plugin_logger
-from Temperature import *
 
 
 class EvohomeMultiLocationClient(EvohomeClient):
@@ -23,10 +24,10 @@ class EvohomeMultiLocationClient(EvohomeClient):
     Add to the base class the ability to get a specified location/heating system - for installations with multiple locations
     """
 
-    def __init__(self, config: AppConfig, plugin_name, username:str, password:str, debug:bool=False, refresh_token=None, access_token=None, access_token_expires=None):
+    def __init__(self, config: AppConfig, plugin_name, username: str, password: str, debug: bool = False,
+                 refresh_token=None, access_token=None, access_token_expires=None):
         super().__init__(username, password, debug, refresh_token, access_token, access_token_expires)
         self._logger = _get_plugin_logger(config, f'{plugin_name}:{self.__class__.__name__}')
-
 
     def get_location(self, locationId=None):
         """
@@ -48,7 +49,6 @@ class EvohomeMultiLocationClient(EvohomeClient):
         self._logger.debug(f'Location {actual_location} found')
         return actual_location
 
-
     def get_heating_system(self, locationId=None):
         """
         Get the heating system for the location with the supplied id or name, or for the first location if none is specified
@@ -68,7 +68,6 @@ class EvohomeMultiLocationClient(EvohomeClient):
 
         return control_system
 
-
     def _find_location_by_id(self, locationId):
         matching_locations = list(filter(lambda l: l.locationId == locationId, self.locations))
 
@@ -80,7 +79,6 @@ class EvohomeMultiLocationClient(EvohomeClient):
             self._logger.debug(f'Found locationId: {locationId}')
             return matching_locations[0]
         raise ValueError(f'Found {matching_locations_count} locations matching "{locationId}"') from None
-
 
     def _find_location_by_name(self, name):
         matching_locations = list(filter(lambda l: l.name == name, self.locations))
@@ -94,6 +92,7 @@ class EvohomeMultiLocationClient(EvohomeClient):
         else:
             self._logger.debug(f'Found {matching_locations_count} locations matching "{name}", returning the first one')
         return matching_locations[0]
+
 
 class Plugin(InputPluginBase):
     """Evohome input Plugin immplementation"""
@@ -115,7 +114,6 @@ class Plugin(InputPluginBase):
 
         self._hotwater = section['HotWater']
         self._hotwater_setpoint = config.get_float_or_default(self.plugin_name, 'HotWaterSetPoint', None)
-
 
     def __init__(self, config: AppConfig) -> None:
         super().__init__(config, 'EvoHome', 'input')
@@ -144,7 +142,10 @@ class Plugin(InputPluginBase):
             access_token_expires = None
             self._logger.debug('No cached credentials available')
 
-        client = EvohomeMultiLocationClient(self._config, self.plugin_name, self._username, self._password, debug=self._config.is_debugging_enabled(self.plugin_name) , refresh_token=refresh_token, access_token=access_token, access_token_expires=access_token_expires)
+        client = EvohomeMultiLocationClient(self._config, self.plugin_name, self._username, self._password,
+                                            debug=self._config.is_debugging_enabled(self.plugin_name),
+                                            refresh_token=refresh_token, access_token=access_token,
+                                            access_token_expires=access_token_expires)
         if global_debug:
             logging.getLogger().setLevel(logging.DEBUG)
 
@@ -154,7 +155,7 @@ class Plugin(InputPluginBase):
 
         # save session-id's so we don't need to re-authenticate every polling cycle.
         with io.open(self._token_file, "w", encoding='UTF-8') as f:
-            token_data = [ client.access_token, client.refresh_token, str(client.access_token_expires) ]
+            token_data = [client.access_token, client.refresh_token, str(client.access_token_expires)]
             json.dump(token_data, f)
 
         return client
@@ -163,10 +164,11 @@ class Plugin(InputPluginBase):
         """
         Get the same temp data that EvoClient pulls back for debugging/error diagnostics
         """
-        location =  client.get_location(self._location)
-        r = requests.get(f'https://tccna.honeywell.com/WebAPI/emea/api/v1/location/{location.locationId}/status?includeTemperatureControlSystems=True', headers=client._headers())
+        location = client.get_location(self._location)
+        r = requests.get(
+            f'https://tccna.honeywell.com/WebAPI/emea/api/v1/location/{location.locationId}/status?includeTemperatureControlSystems=True',
+            headers=client._headers())
         return r.text
-
 
     def _is_hotwater_on(self, client) -> bool:
         """
@@ -182,7 +184,7 @@ class Plugin(InputPluginBase):
         return False
 
     # pylint disable=E1101
-    def _read_temperatures(self):
+    def _read_metrics(self):
         """
         Reads the temperatures from an EvoHome instance
         """
@@ -201,10 +203,10 @@ class Plugin(InputPluginBase):
 
         if self._simulation:
             # Return some random temps if simulating a read
-            temperatures = [Temperature("Lounge", round(random.uniform(12.0, 28.0), 1), 22.0),
-                            Temperature("Master Bedroom", round(random.uniform(18.0, 25.0), 1), 12.0),
-                            Temperature(self._hotwater, round(random.uniform(40, 65), 1))]
-            text_temperatures = '{temperatures[0].zone} ({temperatures[0].actual} A) ({temperatures[0].target} T) {temperatures[1].zone} ({temperatures[1].actual} A) ({temperatures[1].target} T) {temperatures[2].zone} ({temperatures[2].actual} A)'
+            temperatures = [Metric(self.plugin_name, "Lounge", round(random.uniform(12.0, 28.0), 1), 22.0),
+                            Metric(self.plugin_name, "Master Bedroom", round(random.uniform(18.0, 25.0), 1), 12.0),
+                            Metric(self.plugin_name, self._hotwater, round(random.uniform(40, 65), 1))]
+            text_temperatures = '{temperatures[0].descriptor} ({temperatures[0].actual} A) ({temperatures[0].target} T) {temperatures[1].descriptor} ({temperatures[1].actual} A) ({temperatures[1].target} T) {temperatures[2].descriptor} ({temperatures[2].actual} A)'
 
             return (temperatures, text_temperatures)
 
@@ -220,16 +222,20 @@ class Plugin(InputPluginBase):
                 zone = next(zones)
                 if isinstance(zone, KeyError):
                     if heating_system.hotwater is not None:
-                        self._logger.exception(f'EvoHome API key error getting temperatures - could be hot water- status: {heating_system.hotwater.temperatureStatus} - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
+                        self._logger.exception(
+                            f'EvoHome API key error getting temperatures - could be hot water- status: {heating_system.hotwater.temperatureStatus} - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
                     else:
-                        self._logger.exception(f'EvoHome API key error getting temperatures - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
+                        self._logger.exception(
+                            f'EvoHome API key error getting temperatures - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
                 else:
                     if isinstance(zone, Exception):
-                        self._logger.exception(f'EvoHome API error getting temperatures - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
+                        self._logger.exception(
+                            f'EvoHome API error getting temperatures - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
             except StopIteration:
                 break
             except Exception as ex:
-                self._logger.exception(f'EvoHome API error getting temperatures - skipping\n{ex}\nraw_data={self._get_raw_data(client)}')
+                self._logger.exception(
+                    f'EvoHome API error getting temperatures - skipping\n{ex}\nraw_data={self._get_raw_data(client)}')
             else:
                 # normalise response for DHW to be consistent with normal zones
                 if zone['thermostat'] == 'DOMESTIC_HOT_WATER':
@@ -249,18 +255,20 @@ class Plugin(InputPluginBase):
                     try:
                         temp = float(raw_temp)
                         if temp == 128.0:
-                            self._logger.warning(f'No temperature returned for Zone: {zone["name"]} - returning default ({DEFAULT_TEMP}')  # pylint disable=W0640
+                            self._logger.warning(
+                                f'No temperature returned for Zone: {zone["name"]} - returning default ({DEFAULT_TEMP}')  # pylint disable=W0640
                             return DEFAULT_TEMP
                         return temp
                     except Exception:
-                        self._logger.exception(f'Error converting "{raw_temp}" to a float, returning default ({DEFAULT_TEMP}')
+                        self._logger.exception(
+                            f'Error converting "{raw_temp}" to a float, returning default ({DEFAULT_TEMP}')
                         return DEFAULT_TEMP
 
                 if zone['setpoint'] != '' and zone['setpoint'] is not None:
-                    temp = Temperature(zone['name'], temp_or_default(zone['temp']), temp_or_default(zone['setpoint']))
+                    temp = Metric(zone['name'], temp_or_default(zone['temp']), temp_or_default(zone['setpoint']))
                     text_temperatures += f', {zone["setpoint"]} T'
                 else:
-                    temp = Temperature(zone['name'], temp_or_default(zone['temp']))
+                    temp = Metric(zone['name'], temp_or_default(zone['temp']))
                 text_temperatures += ') '
                 temperatures.append(temp)
                 self._logger.debug(text_temperatures)

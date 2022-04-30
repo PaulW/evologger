@@ -2,11 +2,12 @@
 Console output plugin
 """
 
+import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-import logging
 
 from AppConfig import AppConfig
+
 
 def _get_plugin_logger(config: AppConfig, plugin_name: str) -> logging.Logger:
     """
@@ -16,13 +17,14 @@ def _get_plugin_logger(config: AppConfig, plugin_name: str) -> logging.Logger:
     logger.setLevel(logging.DEBUG if config.is_debugging_enabled(plugin_name) else logging.INFO)
     return logger
 
+
 class PluginBase(ABC):
     """Base class for all plugins"""
 
     _logger = None
     _invalid_config: bool = None
     _simulation: bool = None
-    plugin_name:str = None
+    plugin_name: str = None
     plugin_type: str = None
 
     def __init__(self, config: AppConfig, plugin_name: str, plugin_type: str) -> None:
@@ -48,7 +50,7 @@ class InputPluginBase(PluginBase):
     """Base class for all Input plugins"""
 
     @abstractmethod
-    def _read_temperatures(self):
+    def _read_metrics(self):
         """
         Subclass method to Read temperature(s) from an input source
         """
@@ -62,21 +64,21 @@ class InputPluginBase(PluginBase):
             self._logger.debug('Invalid config, aborting read')
             return []
 
-        debug_message = f'Reading temperatures from {self.plugin_name}'
+        debug_message = f'Reading metrics from {self.plugin_name}'
         if self._simulation:
             debug_message += ' [SIMULATED]'
             self._logger.debug(debug_message)
 
         try:
-            (temperatures, text_temperatures) = self._read_temperatures()
-            text_temperatures = f'{datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")} {text_temperatures}'
+            (metrics, text_metrics) = self._read_metrics()
+            text_metrics = f'{datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")} {text_metrics}'
             if self._simulation:
-                self._logger.info(f'[SIMULATED] {text_temperatures}')
+                self._logger.info(f'[SIMULATED] {text_metrics}')
             else:
-                self._logger.debug(text_temperatures)
-            return temperatures
+                self._logger.debug(text_metrics)
+            return metrics
         except Exception:
-            self._logger.exception('Error reading temperatures, aborting read')
+            self._logger.exception('Error reading metrics, aborting read')
             return []
 
 
@@ -84,12 +86,12 @@ class OutputPluginBase(PluginBase):
     """Base class for all output plugins"""
 
     @abstractmethod
-    def _write_temperatures(self, timestamp, temperatures) -> str:
+    def _write_metrics(self, timestamp, metrics) -> str:
         """
         Implementations-specific temperature writer
         """
 
-    def write(self, timestamp, temperatures):
+    def write(self, timestamp, metrics):
         """
         Writes the teemperatures to an output destination
         """
@@ -97,12 +99,12 @@ class OutputPluginBase(PluginBase):
             self._logger.warning('Invalid config, aborting write')
             return
 
-        debug_message = 'Writing temperatures to ' + self.plugin_name
+        debug_message = 'Writing metrics to ' + self.plugin_name
         if self._simulation:
             debug_message += ' [SIMULATED]'
         self._logger.debug(debug_message)
 
         try:
-            self._write_temperatures(timestamp, temperatures)
+            self._write_metrics(timestamp, metrics)
         except Exception:
-            self._logger.exception('Error writing temperatures, aborting write')
+            self._logger.exception('Error writing metrics, aborting write')
