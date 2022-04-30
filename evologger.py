@@ -6,26 +6,24 @@ Reads temperatures from configured input plugins and writes them to configured o
 """
 # pylint: disable=global-statement
 
-from datetime import datetime
 import getopt
 import http
 import logging.config
 import signal
 import sys
 import time
-import requests # pylint: disable=unused-import # we need to import requests even though it is not explicitly used so we get access to http.client
+from datetime import datetime
+
 import structlog
+
 from AppConfig import AppConfig
 from pluginloader import PluginLoader
-
 
 logger = None
 plugins = None
 logging.raiseExceptions = True
 continue_polling = True
 config = AppConfig('config.ini')
-
-outside_zone = config.get_string_or_default('DEFAULT', 'Outside', 'Outside')
 
 
 def handle_signal(sig, _):
@@ -43,6 +41,7 @@ def handle_signal(sig, _):
     continue_polling = False
 
     raise SystemExit(msg)
+
 
 signal.signal(signal.SIGINT, handle_signal)
 signal.signal(signal.SIGTERM, handle_signal)
@@ -71,16 +70,16 @@ def configure_logging(log_level):
             "plain": {
                 "()": structlog.stdlib.ProcessorFormatter,
                 "processors": [
-                   structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-                   structlog.dev.ConsoleRenderer(colors=False),
+                    structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                    structlog.dev.ConsoleRenderer(colors=False),
                 ],
                 "foreign_pre_chain": pre_chain,
             },
             "colored": {
                 "()": structlog.stdlib.ProcessorFormatter,
                 "processors": [
-                   structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-                   structlog.dev.ConsoleRenderer(colors=True),
+                    structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                    structlog.dev.ConsoleRenderer(colors=True),
                 ],
                 "foreign_pre_chain": pre_chain,
             },
@@ -126,17 +125,19 @@ def configure_logging(log_level):
 
     if config.get_boolean_or_default('DEFAULT', 'httpDebug', False) is True:
         http_logger = structlog.get_logger('http-logger')
+
         def print_http_debug_to_log(*args):
             http_logger.debug(" ".join(args))
+
         http.client.HTTPConnection.debuglevel = 5
         http.client.print = print_http_debug_to_log
 
 
-def read_temperatures():
+def read_metrics():
     """
-    Reads the temperatures from the input plugins
+    Reads the metrics from the input plugins
     """
-    temperatures = []
+    metrics = []
     for i in plugins.inputs:
         plugin = plugins.load(i)
         if plugin is None:
@@ -147,40 +148,50 @@ def read_temperatures():
                 if not temps:
                     continue
 
-            except Exception as  e:
+            except Exception as e:
                 logger.exception("Error reading temps from %s: %s", plugin.plugin_name, str(e))
                 return []
 
             for t in temps:
-                temperatures.append(t)
+                metrics.append(t)
 
     # Sort by zone name, with hot water on the end and finally 'Outside'
-    temperatures = sorted(temperatures, key=lambda t: (t.zone in ('Hot Water', outside_zone), t.zone == outside_zone, t.zone))
-    return temperatures
+    metrics = sorted(metrics,
+                     key=lambda t: (t.plugin, t.descriptor))
+    return metrics
 
 
-def publish_temperatures(temperatures):
+def publish_metrics(metrics):
     """
-    Publishes the temperatures to the output plugins
+    Publishes the metrics to the output plugins
     """
 
-    if temperatures:
+    if metrics:
         timestamp = datetime.utcnow()
         timestamp = timestamp.replace(microsecond=0)
 
-        text_temperatures = f'{datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")}: '
-        for t in temperatures:
-            text_temperatures += f'{t.zone} ({t.actual} A'
-            if t.target is not None:
-                text_temperatures += f', {t.target} T'
-            text_temperatures += ') '
+        text_metrics = f'{datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")}: '
 
-        logger.debug(text_temperatures)
+        for metric in metrics:
+            text_metrics += f'{metric.plugin}.{metric.descriptor} ('
+
+            if metric.actual is not None:
+                text_metrics += f'{metric.actual} A'
+
+            if metric.target is not None:
+                text_metrics += f', {metric.target} T'
+
+            if metric.text is not None:
+                text_metrics += f', {metric.text} S'
+
+            text_metrics += ') '
+
+        logger.debug(text_metrics)
 
         for i in plugins.outputs:
             plugin = plugins.load(i)
             try:
-                plugin.write(timestamp, temperatures)
+                plugin.write(timestamp, metrics)
             except Exception as e:
                 logger.exception("Error trying to write to %s: %s", plugin.plugin_name, str(e))
 
@@ -194,7 +205,7 @@ def main(argv):
     debug_logging = False
 
     try:
-        opts, _ = getopt.getopt(argv, "hdi:", ["help","interval", "debug="])
+        opts, _ = getopt.getopt(argv, "hdi:", ["help", "interval", "debug="])
     except getopt.GetoptError:
         print('evologger.py -h for help')
         sys.exit(2)
@@ -207,8 +218,10 @@ def main(argv):
             print('')
             print(' h|help                 : display this help page')
             print(' d|debug                : turn on debug logging, regardless of the config.ini setting')
-            print(' i|interval <interval>  : Log temperatures every <polling interval> seconds, overriding the config.ini value')
-            print('                         If 0 is specified then temperatures are logged only once and the program exits')
+            print(
+                ' i|interval <interval>  : Log temperatures every <polling interval> seconds, overriding the config.ini value')
+            print(
+                '                         If 0 is specified then temperatures are logged only once and the program exits')
             print('')
             sys.exit()
         elif opt in ('-i', '--interval'):
@@ -228,17 +241,17 @@ def main(argv):
     if polling_interval == 0:
         logger.info('One-off run, existing after a single publish')
     else:
-        logger.info(f'Polling every {(polling_interval/60):.2g} minutes...')
+        logger.info(f'Polling every {(polling_interval / 60):.2g} minutes...')
 
     try:
         global continue_polling
         while continue_polling:
-            publish_temperatures(read_temperatures())
+            publish_metrics(read_metrics())
 
             if polling_interval == 0:
                 continue_polling = False
             else:
-                logger.debug(f'Going to sleep for {(polling_interval/60):.2g} minutes')
+                logger.debug(f'Going to sleep for {(polling_interval / 60):.2g} minutes')
                 time.sleep(polling_interval)
 
     except SystemExit:

@@ -30,7 +30,6 @@ class AppConfig(ConfigParser):
             return True if value is None else value.lower() == 'true'
         return default_value
 
-
     def get_float_or_default(self, section_name: str, option_name: str, default_value: float) -> float:
         """Gets a float value from config or returns the default value if not found
 
@@ -47,7 +46,6 @@ class AppConfig(ConfigParser):
             value = self.getfloat(section_name, option_name)
             return value
         return default_value
-
 
     def get_string_or_default(self, section_name: str, option_name: str, default_value: str) -> str:
         """Gets a string value from config or returns the default value if not found
@@ -67,7 +65,6 @@ class AppConfig(ConfigParser):
                 return value
             return self.get_string_or_default('DEFAULT', option_name, default_value)
         return default_value
-
 
     def is_debugging_enabled(self, section: str) -> bool:
         """
