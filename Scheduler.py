@@ -10,31 +10,42 @@ from croniter import croniter
 
 class Scheduler:
 
-    def __init__(self, polling_interval: str) -> None:
+    def __init__(self, plugin_name: str, polling_interval: str) -> None:
         self.__logger = logging.getLogger('scheduler')
-        self.polling_interval = polling_interval
+        self.plugin_name = plugin_name
+        self.polling_interval = self._validate_interval(polling_interval)
 
-    def _is_cron(self) -> bool:
-        return croniter.is_valid(self.polling_interval)
+    def _validate_interval(self, interval: str) -> str:
+        """
+        This function ensures the minimum duration allowed to be specified is 60s, regardless of whether a
+        cron-style interval or integer is specified.
+        """
 
-    def can_run_now(self):
-        return True
+        if croniter.is_valid(interval):
+            base_date = datetime.utcnow().replace(second=0, microsecond=0, minute=0)
+            cron = croniter(interval, base_date)
+            next_run = (cron.get_next(datetime) - base_date).total_seconds()
+            if next_run < 60:
+                self.__logger.warning(
+                    f'[{self.plugin_name}-plugin] Supplied cron-style interval \'{interval}\' has a frequency of less than 60s.  Defaulting to \'* * * * *\'.'
+                )
+                ret_val = '* * * * *'
+            else:
+                self.__logger.debug(
+                    f'[{self.plugin_name}-plugin] User Specified Cron of \'{interval}\' is valid, and equates to an interval of {next_run} Seconds.')
+                ret_val = interval
+        else:
+            self.__logger.error(
+                f'[{self.plugin_name}-plugin] Value provided to Scheduler is not a valid Cron String: \'{interval}\'.  Defaulting to \'* * * * *\'.')
+            ret_val = '* * * * *'
+
+        return ret_val
+
+    def can_run_now(self) -> bool:
+        return croniter.match(self.polling_interval, datetime.utcnow())
 
     def time_until_next_run(self) -> float:
-        ret_val = 60
-        if self._is_cron():
-            cur_run_time = datetime.utcnow()
-            cron = croniter(self.polling_interval, cur_run_time)
-            next_run = cron.get_next(datetime)
-            ret_val = (next_run - cur_run_time).total_seconds()
-        else:
-            if self.polling_interval.isdigit():
-                ret_val = float(self.polling_interval)
-                if ret_val < 60:
-                    self.__logger.warning(
-                        f'Manually specified Intervals of less than 60 seconds is not allowed!  Defaulting to 60s.')
-                    ret_val = 60
-            else:
-                self.__logger.error(
-                    f'Value provided to Scheduler is neither an Number or valid Cron String: \'{self.polling_interval}\'.  Defaulting to 60s.')
-        return ret_val
+        cur_run_time = datetime.utcnow()
+        cron = croniter(self.polling_interval, cur_run_time)
+        next_run = cron.get_next(datetime)
+        return float((next_run - cur_run_time).total_seconds())
