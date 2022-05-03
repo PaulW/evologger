@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+
 class Metric:
     """
     Represents metric values.
