@@ -12,14 +12,15 @@ from datetime import datetime
 from tempfile import gettempdir
 
 import requests
-from evohomeclient2 import EvohomeClient
+from evohomeclient import EvohomeClient
+from evohomeclient2 import EvohomeClient as EvohomeClient2
 
 from AppConfig import AppConfig
 from Metric import *
 from plugins.PluginBase import InputPluginBase, _get_plugin_logger
 
 
-class EvohomeMultiLocationClient(EvohomeClient):
+class EvohomeMultiLocationClient(EvohomeClient2):
     """
     Add to the base class the ability to get a specified location/heating system - for installations with multiple locations
     """
@@ -102,7 +103,8 @@ class Plugin(InputPluginBase):
     def _read_configuration(self, config: AppConfig):
         self._config = config
         section = config[self.plugin_name]
-        self._token_file = f'{gettempdir()}/{self.plugin_name}.access_tokens.json'
+        self._plugin_version = config.get_int_or_default(self.plugin_name, 'APIVersion', 2)
+        self._token_file = f'{gettempdir()}/{self.plugin_name}.v{self._plugin_version}_access_tokens.json'
         self._http_debug = config.get_boolean_or_default('DEFAULT', 'httpDebug', False)
         self._username = section['username']
         self._password = section['password']
@@ -114,6 +116,8 @@ class Plugin(InputPluginBase):
 
         self._hotwater = section['HotWater']
         self._hotwater_setpoint = config.get_float_or_default(self.plugin_name, 'HotWaterSetPoint', None)
+
+        self._logger.debug(f'Leveraging API Version {self._plugin_version}')
 
     def __init__(self, config: AppConfig) -> None:
         super().__init__(config, 'EvoHome', 'input')
@@ -132,20 +136,30 @@ class Plugin(InputPluginBase):
             # https://github.com/watchforstock/evohome-client/issues/57
             with io.open(self._token_file, "r", encoding='UTF-8') as f:
                 token_data = json.load(f)
-                access_token = token_data[0]
-                refresh_token = token_data[1]
-                access_token_expires = datetime.strptime(token_data[2], "%Y-%m-%d %H:%M:%S.%f")
-            self._logger.debug(f'Using cached credentials expiring at {access_token_expires}')
+                if self._plugin_version == 2:
+                    access_token = token_data[0]
+                    refresh_token = token_data[1]
+                    access_token_expires = datetime.strptime(token_data[2], "%Y-%m-%d %H:%M:%S.%f")
+                    self._logger.debug(f'Using cached credentials expiring at {access_token_expires}')
+                else:
+                    self._logger.debug(f'Successfully loaded cached credentials')
         except (IOError, ValueError):
+            token_data = None
             access_token = None
             refresh_token = None
             access_token_expires = None
             self._logger.debug('No cached credentials available')
 
-        client = EvohomeMultiLocationClient(self._config, self.plugin_name, self._username, self._password,
-                                            debug=self._config.is_debugging_enabled(self.plugin_name),
-                                            refresh_token=refresh_token, access_token=access_token,
-                                            access_token_expires=access_token_expires)
+        if self._plugin_version == 1:
+            client = EvohomeClient(username=self._username,
+                                   password=self._password,
+                                   debug=self._config.is_debugging_enabled(self.plugin_name),
+                                   user_data=token_data)
+        else:
+            client = EvohomeMultiLocationClient(self._config, self.plugin_name, self._username, self._password,
+                                                debug=self._config.is_debugging_enabled(self.plugin_name),
+                                                refresh_token=refresh_token, access_token=access_token,
+                                                access_token_expires=access_token_expires)
         if global_debug:
             logging.getLogger().setLevel(logging.DEBUG)
 
@@ -153,9 +167,16 @@ class Plugin(InputPluginBase):
         if self._config.is_debugging_enabled(self.plugin_name) is True and self._http_debug is False:
             http.client.HTTPConnection.debuglevel = 0
 
+        # Force Authentication of Client if leveraging v1 api
+        if self._plugin_version == 1:
+            self._logger.debug(f'Retrieved {len(list(client.temperatures()))} Devices when performing pre-auth checks.')
+
         # save session-id's so we don't need to re-authenticate every polling cycle.
         with io.open(self._token_file, "w", encoding='UTF-8') as f:
-            token_data = [client.access_token, client.refresh_token, str(client.access_token_expires)]
+            if self._plugin_version == 1:
+                token_data = client.user_data
+            else:
+                token_data = [client.access_token, client.refresh_token, str(client.access_token_expires)]
             json.dump(token_data, f)
 
         return client
@@ -164,23 +185,31 @@ class Plugin(InputPluginBase):
         """
         Get the same temp data that EvoClient pulls back for debugging/error diagnostics
         """
-        location = client.get_location(self._location)
-        r = requests.get(
-            f'https://tccna.honeywell.com/WebAPI/emea/api/v1/location/{location.locationId}/status?includeTemperatureControlSystems=True',
-            headers=client._headers())
+        if self._plugin_version == 1:
+            headers = {'content-type': 'application/json', 'sessionId': client.user_data['sessionId']}
+
+            r = requests.get(
+                f'https://tccna.honeywell.com/WebAPI/api/locations?userId={client.user_data["userInfo"]["userID"]}&allData=True',
+                headers=headers)
+        else:
+            location = client.get_location(self._location)
+            r = requests.get(
+                f'https://tccna.honeywell.com/WebAPI/emea/api/v1/location/{location.locationId}/status?includeTemperatureControlSystems=True',
+                headers=client._headers())
         return r.text
 
     def _is_hotwater_on(self, client) -> bool:
         """
         Determines if the hot water is on or not
         """
-        location = client.get_location(self._location)
-        status = location.status()
-        if 'dhw' in status['gateways'][0]['temperatureControlSystems'][0]:
-            self._logger.debug('DHW found')
-            dhw = status['gateways'][0]['temperatureControlSystems'][0]['dhw']
-            return dhw['stateStatus']['state'] == 'On'
-        self._logger.debug('No DHW found')
+        if self._plugin_version == 2:
+            location = client.get_location(self._location)
+            status = location.status()
+            if 'dhw' in status['gateways'][0]['temperatureControlSystems'][0]:
+                self._logger.debug('DHW found')
+                dhw = status['gateways'][0]['temperatureControlSystems'][0]['dhw']
+                return dhw['stateStatus']['state'] == 'On'
+            self._logger.debug('No DHW found')
         return False
 
     # pylint disable=E1101
@@ -211,8 +240,11 @@ class Plugin(InputPluginBase):
             return (temperatures, text_temperatures)
 
         try:
-            heating_system = client.get_heating_system(self._location)
-            zones = heating_system.temperatures()
+            if self._plugin_version == 1:
+                zones = client.temperatures()
+            else:
+                heating_system = client.get_heating_system(self._location)
+                zones = heating_system.temperatures()
         except Exception as e:
             self._logger.exception(f'EvoHome API error getting temperatures - aborting\n{e}')
             return ([], '')
@@ -220,17 +252,18 @@ class Plugin(InputPluginBase):
         while True:
             try:
                 zone = next(zones)
-                if isinstance(zone, KeyError):
-                    if heating_system.hotwater is not None:
-                        self._logger.exception(
-                            f'EvoHome API key error getting temperatures - could be hot water- status: {heating_system.hotwater.temperatureStatus} - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
+                if self._plugin_version == 2:
+                    if isinstance(zone, KeyError):
+                        if heating_system.hotwater is not None:
+                            self._logger.exception(
+                                f'EvoHome API key error getting temperatures - could be hot water- status: {heating_system.hotwater.temperatureStatus} - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
+                        else:
+                            self._logger.exception(
+                                f'EvoHome API key error getting temperatures - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
                     else:
-                        self._logger.exception(
-                            f'EvoHome API key error getting temperatures - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
-                else:
-                    if isinstance(zone, Exception):
-                        self._logger.exception(
-                            f'EvoHome API error getting temperatures - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
+                        if isinstance(zone, Exception):
+                            self._logger.exception(
+                                f'EvoHome API error getting temperatures - skipping\n{zone}\nraw_data={self._get_raw_data(client)}')
             except StopIteration:
                 break
             except Exception as ex:
@@ -240,7 +273,7 @@ class Plugin(InputPluginBase):
                 # normalise response for DHW to be consistent with normal zones
                 if zone['thermostat'] == 'DOMESTIC_HOT_WATER':
                     zone['name'] = self._hotwater
-                    if self._is_hotwater_on(client):
+                    if self._is_hotwater_on(client) or zone['mode'] == 'DHWOn':
                         if self._hotwater_setpoint is not None:
                             zone['setpoint'] = self._hotwater_setpoint
                     else:
@@ -265,12 +298,18 @@ class Plugin(InputPluginBase):
                         return DEFAULT_TEMP
 
                 if zone['setpoint'] != '' and zone['setpoint'] is not None:
-                    temp = Metric(zone['name'], temp_or_default(zone['temp']), temp_or_default(zone['setpoint']))
+                    temp = Metric(plugin=self.plugin_name,
+                                  descriptor=zone['name'],
+                                  actual=temp_or_default(zone['temp']),
+                                  target=temp_or_default(zone['setpoint'])
+                                  )
                     text_temperatures += f', {zone["setpoint"]} T'
                 else:
-                    temp = Metric(zone['name'], temp_or_default(zone['temp']))
+                    temp = Metric(plugin == self.plugin_name,
+                                  descriptor=zone['name'],
+                                  actual=temp_or_default(zone['temp']))
                 text_temperatures += ') '
                 temperatures.append(temp)
-                self._logger.debug(text_temperatures)
 
+        self._logger.debug(text_temperatures)
         return (temperatures, text_temperatures)

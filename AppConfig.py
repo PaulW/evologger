@@ -66,6 +66,23 @@ class AppConfig(ConfigParser):
             return self.get_string_or_default('DEFAULT', option_name, default_value)
         return default_value
 
+    def get_int_or_default(self, section_name: str, option_name: str, default_value: int) -> int:
+        """Gets a int value from config or returns the default value if not found
+
+        Args:
+            section_name (str): The section name
+            option_name (str): The option name (key) in the section
+            default_value (int): The default value to return if the config value does not exist
+
+        Returns:
+            int: The int value of the supplied option or the default value if it does not exist
+        """
+
+        if self.has_option(section_name, option_name):
+            value = self.getint(section_name, option_name)
+            return value
+        return default_value
+
     def is_debugging_enabled(self, section: str) -> bool:
         """
         Determines if debuggins is enabled for a given section (usually related to a plugin)
