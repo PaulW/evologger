@@ -17,6 +17,7 @@ from evohomeclient2 import EvohomeClient as EvohomeClient2
 
 from AppConfig import AppConfig
 from Metric import *
+from Scheduler import Scheduler
 from plugins.PluginBase import InputPluginBase, _get_plugin_logger
 
 
@@ -116,6 +117,12 @@ class Plugin(InputPluginBase):
 
         self._hotwater = section['HotWater']
         self._hotwater_setpoint = config.get_float_or_default(self.plugin_name, 'HotWaterSetPoint', None)
+
+        self.scheduler = Scheduler(plugin_name=self.plugin_name,
+                                   polling_interval=config.get_string_or_default(self.plugin_name,
+                                                                                 'pollingInterval',
+                                                                                 '* * * * *')
+                                   )
 
         self._logger.debug(f'Leveraging API Version {self._plugin_version}')
 
@@ -218,6 +225,10 @@ class Plugin(InputPluginBase):
         Reads the temperatures from an EvoHome instance
         """
 
+        if not self.scheduler.can_run_now():
+            self._logger.debug("Not running as not within Cron window!")
+            return [], ''
+
         client = None
         temperatures = []
 
@@ -235,7 +246,7 @@ class Plugin(InputPluginBase):
             temperatures = [Metric(self.plugin_name, "Lounge", round(random.uniform(12.0, 28.0), 1), 22.0),
                             Metric(self.plugin_name, "Master Bedroom", round(random.uniform(18.0, 25.0), 1), 12.0),
                             Metric(self.plugin_name, self._hotwater, round(random.uniform(40, 65), 1))]
-            text_temperatures = '{temperatures[0].descriptor} ({temperatures[0].actual} A) ({temperatures[0].target} T) {temperatures[1].descriptor} ({temperatures[1].actual} A) ({temperatures[1].target} T) {temperatures[2].descriptor} ({temperatures[2].actual} A)'
+            text_temperatures = f'{temperatures[0].descriptor} ({temperatures[0].actual} A) ({temperatures[0].target} T) {temperatures[1].descriptor} ({temperatures[1].actual} A) ({temperatures[1].target} T) {temperatures[2].descriptor} ({temperatures[2].actual} A)'
 
             return (temperatures, text_temperatures)
 
