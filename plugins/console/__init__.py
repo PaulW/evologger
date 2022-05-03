@@ -36,4 +36,4 @@ class Plugin(OutputPluginBase):
             text_metrics += ') '
 
         if self._simulation is False:
-            print(text_metrics)
+            self._logger.info(text_metrics)

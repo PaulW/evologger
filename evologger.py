@@ -176,15 +176,15 @@ def publish_metrics(metrics):
             text_metrics += f'{metric.plugin}.{metric.descriptor} ('
 
             if metric.actual is not None:
-                text_metrics += f'{metric.actual} A'
+                text_metrics += f' {metric.actual} A'
 
             if metric.target is not None:
-                text_metrics += f', {metric.target} T'
+                text_metrics += f' {metric.target} T'
 
             if metric.text is not None:
-                text_metrics += f', {metric.text} S'
+                text_metrics += f' {metric.text} S'
 
-            text_metrics += ') '
+            text_metrics += ' ) '
 
         logger.debug(text_metrics)
 
