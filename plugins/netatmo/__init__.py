@@ -6,7 +6,7 @@ Netatmo input plugin - for getting the outside temperature
 import io
 import random
 import ssl
-from datetime import datetime, timedelta
+from datetime import timedelta
 from json import dump, load
 from tempfile import gettempdir
 from urllib import parse

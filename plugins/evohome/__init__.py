@@ -8,7 +8,6 @@ import io
 import json
 import logging
 import random
-from datetime import datetime
 from tempfile import gettempdir
 
 import requests

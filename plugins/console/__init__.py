@@ -20,23 +20,21 @@ class Plugin(OutputPluginBase):
         Writes the temperatures to the console
         """
 
+        def _add_seperator(text: str, newval: str):
+            if text != '':
+                return f', {newval}'
+            else:
+                return newval
+
         text_metrics = ''
         for metric in metrics:
-            text_metrics += f'{metric.plugin}.{metric.descriptor} ('
+            text_metrics_tmp = ''
+            text_metrics_tmp += f'{metric.actual} A' if metric.actual else ''
+            text_metrics_tmp += f'{_add_seperator(text_metrics_tmp, metric.target)} T' if metric.target else ''
+            text_metrics_tmp += f'{_add_seperator(text_metrics_tmp, metric.text)} S' if metric.text else ''
+            text_metrics_tmp += f'{_add_seperator(text_metrics_tmp, metric.timestamp)} TS' if metric.timestamp else ''
 
-            if metric.actual is not None:
-                text_metrics += f'{metric.actual} A'
-
-            if metric.target is not None:
-                text_metrics += f', {metric.target} T'
-
-            if metric.text is not None:
-                text_metrics += f', {metric.text} S'
-
-            if metric.timestamp is not None:
-                text_metrics += f', {metric.timestamp} TS'
-
-            text_metrics += ') '
+            text_metrics += f'{_add_seperator(text_metrics, f"{metric.plugin}.{metric.descriptor} ({text_metrics_tmp})")}'
 
         if self._simulation is False:
             self._logger.info(text_metrics)
