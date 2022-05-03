@@ -17,6 +17,7 @@ from datetime import datetime
 import structlog
 
 from AppConfig import AppConfig
+from Scheduler import Scheduler
 from pluginloader import PluginLoader
 
 logger = None
@@ -201,7 +202,7 @@ def main(argv):
     Main appliction entry point
     """
 
-    polling_interval = config.getint('DEFAULT', 'pollingInterval')
+    polling_interval = config.get("DEFAULT", "pollingInterval", fallback="* * * * *")
     debug_logging = False
 
     try:
@@ -218,15 +219,15 @@ def main(argv):
             print('')
             print(' h|help                 : display this help page')
             print(' d|debug                : turn on debug logging, regardless of the config.ini setting')
+            print(' i|interval <interval>  : This can be specified either in seconds, or as a cron-style string.')
+            print('                          Option will override the config.ini value.')
             print(
-                ' i|interval <interval>  : Log temperatures every <polling interval> seconds, overriding the config.ini value')
-            print(
-                '                         If 0 is specified then temperatures are logged only once and the program exits')
+                '                          If 0 is specified then only one run will complete, and the program will exit'
+            )
             print('')
             sys.exit()
         elif opt in ('-i', '--interval'):
-            if arg.isdigit():
-                polling_interval = int(arg)
+            polling_interval = str(arg)
         elif opt in ('-d', '--debug'):
             debug_logging = True
 
@@ -237,22 +238,27 @@ def main(argv):
     global plugins
     sections = filter(lambda a: a.lower() != 'DEFAULT', config.sections())
     plugins = PluginLoader(config, sections, './plugins')
+    scheduler = Scheduler(polling_interval)
 
-    if polling_interval == 0:
+    if polling_interval == '0':
         logger.info('One-off run, existing after a single publish')
     else:
-        logger.info(f'Polling every {(polling_interval / 60):.2g} minutes...')
+        logger.info(f'Polling according to cron-style value of {polling_interval}')
 
     try:
         global continue_polling
         while continue_polling:
             publish_metrics(read_metrics())
 
-            if polling_interval == 0:
+            if polling_interval == '0':
                 continue_polling = False
             else:
-                logger.debug(f'Going to sleep for {(polling_interval / 60):.2g} minutes')
-                time.sleep(polling_interval)
+                sleep_duration = scheduler.time_until_next_run()
+                if sleep_duration > 60:
+                    logger.debug(f'Going to sleep for {(sleep_duration / 60):.2g} minutes')
+                else:
+                    logger.debug(f'Going to sleep for {sleep_duration:.2g} seconds')
+                time.sleep(sleep_duration)
 
     except SystemExit:
         pass
