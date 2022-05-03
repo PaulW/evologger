@@ -203,6 +203,7 @@ def main(argv):
     """
 
     polling_interval = config.get("DEFAULT", "pollingInterval", fallback="* * * * *")
+    single_run = False
     debug_logging = False
 
     try:
@@ -219,15 +220,15 @@ def main(argv):
             print('')
             print(' h|help                 : display this help page')
             print(' d|debug                : turn on debug logging, regardless of the config.ini setting')
-            print(' i|interval <interval>  : This can be specified either in seconds, or as a cron-style string.')
+            print(' i|interval <interval>  : This must be specified as a cron-style string such as \'* * * * *\'.')
             print('                          Option will override the config.ini value.')
-            print(
-                '                          If 0 is specified then only one run will complete, and the program will exit'
-            )
+            print(' s|single               : If set, will cause EvoLogger to run once and then exit.')
             print('')
             sys.exit()
         elif opt in ('-i', '--interval'):
             polling_interval = str(arg)
+        elif opt in ('-s', '--single'):
+            single_run = True
         elif opt in ('-d', '--debug'):
             debug_logging = True
 
@@ -238,9 +239,9 @@ def main(argv):
     global plugins
     sections = filter(lambda a: a.lower() != 'DEFAULT', config.sections())
     plugins = PluginLoader(config, sections, './plugins')
-    scheduler = Scheduler(polling_interval)
+    scheduler = Scheduler(plugin_name='evologger', polling_interval=polling_interval)
 
-    if polling_interval == '0':
+    if single_run:
         logger.info('One-off run, existing after a single publish')
     else:
         logger.info(f'Polling according to cron-style value of {polling_interval}')
@@ -250,7 +251,7 @@ def main(argv):
         while continue_polling:
             publish_metrics(read_metrics())
 
-            if polling_interval == '0':
+            if single_run:
                 continue_polling = False
             else:
                 sleep_duration = scheduler.time_until_next_run()
