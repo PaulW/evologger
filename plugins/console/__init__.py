@@ -33,6 +33,9 @@ class Plugin(OutputPluginBase):
             if metric.text is not None:
                 text_metrics += f', {metric.text} S'
 
+            if metric.timestamp is not None:
+                text_metrics += f', {metric.timestamp} TS'
+
             text_metrics += ') '
 
         if self._simulation is False:

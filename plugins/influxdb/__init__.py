@@ -10,7 +10,7 @@ from AppConfig import AppConfig
 from plugins.PluginBase import OutputPluginBase
 
 
-def _get_measurements(time, plugin, descriptor, actual, target, text, logger):
+def _get_measurements(time, plugin, descriptor, actual, target, text, timestamp, logger):
     """
     Returns the actual, target, delta and text data points
     """
@@ -28,7 +28,7 @@ def _get_measurements(time, plugin, descriptor, actual, target, text, logger):
                     "plugin": plugin,
                     "descriptor": descriptor
                 },
-                "time": time,
+                "time": time if timestamp is None else timestamp,
                 "fields": {
                     "value": value
                 }
@@ -84,6 +84,7 @@ class Plugin(OutputPluginBase):
                                                                                         metric.actual,
                                                                                         metric.target,
                                                                                         metric.text,
+                                                                                        metric.timestamp,
                                                                                         self._logger)
 
             if record_actual:
@@ -99,6 +100,8 @@ class Plugin(OutputPluginBase):
             if self._simulation is False:
                 self._logger.debug('Writing all measurements to influx...')
                 influx_client.write_points(data)
+            else:
+                self._logger.debug(f'Metrics to be written: {data}')
         except Exception as e:
             if hasattr(e, 'request'):
                 self._logger.exception(

@@ -49,6 +49,8 @@ class Plugin(OutputPluginBase):
                         fieldnames.append(metric.descriptor + ' [T]')
                     if metric.text is not None:
                         fieldnames.append(metric.descriptor + ' [S]')
+                    if metric.timestamp is not None:
+                        fieldnames.append(metric.descriptor + ' [TS]')
 
                 writer.writerow(fieldnames)
 
@@ -62,6 +64,9 @@ class Plugin(OutputPluginBase):
 
                 if metric.text is not None:
                     row.append(metric.text)
+
+                if metric.timestamp is not None:
+                    row.append(metric.timestamp)
 
         finally:
             if self._simulation is False and writer is not None:
