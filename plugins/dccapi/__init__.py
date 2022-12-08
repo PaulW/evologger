@@ -39,7 +39,7 @@ class Plugin(InputPluginBase):
         return rdt.strftime('%Y%m%d%H%M')
 
     def _m3_to_kwh(self, unit: float) -> float:
-        return round((unit * self._gas_calorific * 1.02264 / 3.6), 3)
+        return round((unit * self._gas_calorific * 1.02264 / 3.6), 3) if unit < 100 else 0
 
     def _get_dcc_data(self, api_endpoint: str = "", start_range: int = 0, end_range: int = 0) -> json:
         base_url = f'https://consumer-api.data.n3rgy.com/{api_endpoint}'
@@ -95,13 +95,14 @@ class Plugin(InputPluginBase):
 
             return energy_data, text_data
 
-        tdata = self._get_dcc_data()
+        #tdata = self._get_dcc_data()
 
-        if 'entries' not in tdata:
-            self._logger.error('Unable to get a list of Fuel types.')
-            return None
+        #if 'entries' not in tdata:
+        #    self._logger.error('Unable to get a list of Fuel types.')
+        #    return None
 
-        for key in tdata['entries']:
+        #for key in tdata['entries']:
+        for key in ['gas', 'electricity']:
             t_fuel_data = self._get_consumption_data(fuel=key, period=self._backfill_period)
 
             for consumption in t_fuel_data:

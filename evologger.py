@@ -249,6 +249,7 @@ def main(argv):
     try:
         global continue_polling
         while continue_polling:
+            logger.info(f'Polling all plugins.')
             publish_metrics(read_metrics())
 
             if single_run:
@@ -256,9 +257,9 @@ def main(argv):
             else:
                 sleep_duration = scheduler.time_until_next_run()
                 if sleep_duration > 60:
-                    logger.debug(f'Going to sleep for {(sleep_duration / 60):.2g} minutes')
+                    logger.info(f'Going to sleep for {(sleep_duration / 60):.2g} minutes')
                 else:
-                    logger.debug(f'Going to sleep for {sleep_duration:.2g} seconds')
+                    logger.info(f'Going to sleep for {sleep_duration:.2g} seconds')
                 time.sleep(sleep_duration)
 
     except SystemExit:
